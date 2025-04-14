@@ -211,13 +211,14 @@ PROC GENMOD DATA=TEMP.DATA DESCENDING;
 	/*REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=AR(1);*/
 	/*REPEATED SUBJECT=PID / TYPE=AR(1);*/
 	/*REPEATED SUBJECT=PID / TYPE=EXCH;*/
-	REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=EXCH;
+	REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=EXCH CORRW;
 RUN;
 ```
 
 ## 5. 결과
 ![image](https://github.com/user-attachments/assets/ac0e535d-6c3d-422d-805d-e8748312b37c)
-![image](https://github.com/user-attachments/assets/3de7f221-33e1-4ffd-bf47-559048ca5a1f)
+![image](https://github.com/user-attachments/assets/b2f89b18-63a1-4f75-a717-8382a9716628)
+![image](https://github.com/user-attachments/assets/f93c976e-a813-4daf-9c33-3ca24a9b9ec6)
 ![image](https://github.com/user-attachments/assets/ecd846a5-5c25-4f2d-850b-0ec90813a6e0)
 
 
