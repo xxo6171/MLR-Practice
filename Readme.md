@@ -1,4 +1,4 @@
-# [고급보건통계학] Multiple Regression 예제
+# [고급보건통계학] GEE 예제
 ### 이경민, 보건행정학과 통합과정 3학기
 <br>
 
@@ -13,8 +13,8 @@
 
 ## 자료원 및 대상:
 
-- 노동패널(KLIPS) 26차 자료 (2023년)
-    - 단년도
+- 노동패널(KLIPS) 23-26차 자료 (2020-2023년)
+    - 종단자료
 - 대상: 45세 이상
 
 
@@ -40,7 +40,8 @@
 
 ## 모델
 
-- Multiple Linear Regression
+- Generalized Estimating Equation (GEE)
+- Linear Regression
 
 
 
@@ -54,7 +55,7 @@
 
 ## 0. 프로세스
 
-![image](https://github.com/user-attachments/assets/e5ff173d-f428-414c-9ed2-6842b2a7c1cc)
+![image](https://github.com/user-attachments/assets/46826115-0191-4617-a20b-819630359122)
 
 ## 1. 라이브러리 불러오기
 
@@ -67,7 +68,9 @@ LIBNAME TEMP "mypath\TEMP";
 
 ```swift
 ************************************ Load Dataset **************************************************
-KLIPS 24th Data (2023)
+KLIPS Data (2020-2023)
+
+WAVE 23-26
 
 ** PID: person id
 
@@ -94,138 +97,129 @@ KLIPS 24th Data (2023)
   * Smoking Status  
   * Drinking Status
 ****************************************************************************************************;
-
-PROC SQL;
-CREATE TABLE TEMP.DATA AS
-SELECT PID AS PID,
-       P260201 AS WORK, PA268141 AS HAPPINESS,
-	   P260101 AS GENDER, P260104 AS BIRTH,
-	   P260110 AS EDU, P260121 AS REGION, P266615 AS SCE_STATUS,
-	   P266101 AS HTH_STATUS,
-	   P266106-1 AS LMT_ATV_6, P266107-1 AS LMT_ATV_7, P266108-1 AS LMT_ATV_8, P266109-1 AS LMT_ATV_9,
-	   P266158 AS SMK, P266161 AS DRK 
-FROM RAW.KLIPS26P;
-QUIT;
-
-/*결측 값 확인*/
-PROC MEANS DATA=TEMP.DATA N NMISS;
-RUN;
+%MACRO LOAD_DATA(START, END);
+%DO W = &START. %TO &END.;
+	%LET YEAR = %EVAL(2020 + (&W. - &START.));
+	PROC SQL;
+	CREATE TABLE TEMP.DATA_&YEAR. AS
+	SELECT PID AS PID,
+	       P&W.0201 AS WORK, PA&W.8141 AS HAPPINESS,
+		   P&W.0101 AS GENDER, P&W.0104 AS BIRTH,
+		   P&W.0110 AS EDU, P&W.0121 AS REGION, P&W.6615 AS SCE_STATUS,
+		   P&W.6101 AS HTH_STATUS,
+		   P&W.6106-1 AS LMT_ATV_6, P&W.6107-1 AS LMT_ATV_7, P&W.6108-1 AS LMT_ATV_8, P&W.6109-1 AS LMT_ATV_9,
+		   P&W.6158 AS SMK, P&W.6161 AS DRK, &YEAR AS YEAR
+	FROM RAW.KLIPS&W.P;
+	QUIT;
+	/*결측 값 확인*/
+	PROC MEANS DATA=TEMP.DATA_&YEAR. N NMISS;
+	RUN;
+%END;
+%MEND;
+%LOAD_DATA(23, 26);
 ```
 
 ## 3. 데이터 전처리
 
 ```swift
-/*Grouping*/
+%MACRO DATA_PREPROCESSING(SYEAR, EYEAR);
+%DO Y = &SYEAR. %TO &EYEAR.;
+	/*Grouping*/
+	PROC SQL;
+	CREATE TABLE TEMP.DATA_&Y._2 AS
+	SELECT PID, HAPPINESS,
+
+	     /* 0: 미취업자; 1: 취업자 */
+	     CASE WHEN WORK = 2 THEN 0 ELSE 1 
+		   END AS WORK,
+		   
+		   /* 0: 여자; 1: 남자 */
+		   CASE WHEN GENDER = 2 THEN 0 ELSE 1 
+		   END AS GENDER,
+
+		   /*연령*/
+		   YEAR - BIRTH AS AGE, 
+		   
+		   /* 1: 초졸이하; 2:중졸; 3:고졸; 4:대졸이상 */
+	       CASE WHEN EDU BETWEEN 1 AND 3 THEN 1 
+		   		WHEN EDU = 4 THEN 2
+				WHEN EDU = 5 THEN 3
+			    ELSE 4
+		   END AS EDU,
+		   
+		   /* 1: 서울; 2:광역시; 3: 그 외 또는 지방 */
+	       CASE WHEN REGION = 1 THEN 1 			
+	            WHEN REGION BETWEEN 2 AND 7 THEN 2
+	            ELSE 3
+		   END AS REGION,
+		   
+		   /* 1: 하; 2:중; 3: 상 */
+		   CASE WHEN SCE_STATUS BETWEEN 5 AND 6 THEN 1
+		        WHEN SCE_STATUS BETWEEN 3 AND 4 THEN 2
+				WHEN SCE_STATUS BETWEEN 1 AND 2 THEN 3
+		   END AS SCE_STATUS,
+		   
+		   /* 1: 나쁨; 2: 보통; 3: 좋음 */
+		   CASE WHEN HTH_STATUS BETWEEN 4 AND 5 THEN 1
+		        WHEN HTH_STATUS = 3 THEN 2
+				WHEN HTH_STATUS BETWEEN 1 AND 2 THEN 3
+		   END AS HTH_STATUS,
+		   
+		   /* 0: 일상활동 제한 있음; 1: 일상활동 제한 없음*/
+		   CASE WHEN LMT_ATV_6 + LMT_ATV_7 + LMT_ATV_8 + LMT_ATV_9 >= 1 THEN 0 ELSE 1
+		   END AS LMT_ATV,
+		   
+		   /* 1: 담배 핌; 2: 담배 안 핌 */
+		   CASE WHEN SMK = 1 THEN 1 ELSE 2
+		   END AS SMK,
+		   
+		   /* 1: 술 마심; 2: 술 안 마심 */
+		   CASE WHEN DRK = 1 THEN 1 ELSE 2
+		   END AS DRK, 
+		YEAR
+	FROM TEMP.DATA_&Y.
+	WHERE YEAR - BIRTH >= 45; /* 45세 이상만 */
+	QUIT;
+%END;
+%MEND;
+%DATA_PREPROCESSING(2020, 2023);
+
+
+%MACRO UNION(SYEAR, EYEAR);
 PROC SQL;
-CREATE TABLE TEMP.DATA2 AS
-SELECT PID, HAPPINESS,
-
-     /* 0: 미취업자; 1: 취업자 */
-     CASE WHEN WORK = 2 THEN 0 ELSE 1 
-	   END AS WORK,
-	   
-	   /* 0: 여자; 1: 남자 */
-	   CASE WHEN GENDER = 2 THEN 0 ELSE 1 
-	   END AS GENDER,
-
-	   /*연령*/
-	   2023 - BIRTH AS AGE, 
-	   
-	   /* 1: 초졸이하; 2:중졸; 3:고졸; 4:대졸이상 */
-       CASE WHEN EDU BETWEEN 1 AND 3 THEN 1 
-	   		WHEN EDU = 4 THEN 2
-			WHEN EDU = 5 THEN 3
-		    ELSE 4
-	   END AS EDU,
-	   
-	   /* 1: 서울; 2:광역시; 3: 그 외 또는 지방 */
-       CASE WHEN REGION = 1 THEN 1 			
-            WHEN REGION BETWEEN 2 AND 7 THEN 2
-            ELSE 3
-	   END AS REGION,
-	   
-	   /* 1: 하; 2:중; 3: 상 */
-	   CASE WHEN SCE_STATUS BETWEEN 5 AND 6 THEN 1
-	        WHEN SCE_STATUS BETWEEN 3 AND 4 THEN 2
-			WHEN SCE_STATUS BETWEEN 1 AND 2 THEN 3
-	   END AS SCE_STATUS,
-	   
-	   /* 1: 나쁨; 2: 보통; 3: 좋음 */
-	   CASE WHEN HTH_STATUS BETWEEN 4 AND 5 THEN 1
-	        WHEN HTH_STATUS = 3 THEN 2
-			WHEN HTH_STATUS BETWEEN 1 AND 2 THEN 3
-	   END AS HTH_STATUS,
-	   
-	   /* 0: 일상활동 제한 있음; 1: 일상활동 제한 없음*/
-	   CASE WHEN LMT_ATV_6 + LMT_ATV_7 + LMT_ATV_8 + LMT_ATV_9 >= 1 THEN 0 ELSE 1
-	   END AS LMT_ATV,
-	   
-	   /* 1: 담배 핌; 2: 담배 안 핌 */
-	   CASE WHEN SMK = 1 THEN 1 ELSE 2
-	   END AS SMK,
-	   
-	   /* 1: 술 마심; 2: 술 안 마심 */
-	   CASE WHEN DRK = 1 THEN 1 ELSE 2
-	   END AS DRK
-FROM TEMP.DATA
-WHERE 2023 - BIRTH >= 45; /* 45세 이상만 */
+    CREATE TABLE TEMP.DATA AS
+    %DO Y = &SYEAR %TO &EYEAR;
+        SELECT * FROM TEMP.DATA_&Y._2
+        %IF &Y < &EYEAR %THEN UNION ALL
+    %END;
+   ORDER BY PID, YEAR;
 QUIT;
-
-/*Get dummy*/
-DATA TEMP.DATA3;
-    SET TEMP.DATA2;
-
-    /* ＲＥＦ: WORK=0 */
-    WORK_1 = (WORK = 1);
-
-    /* ＲＥＦ: GENDER=0 */
-    GENDER_1 = (GENDER = 1);
-
-    /* ＲＥＦ: EDU=1 */
-    EDU_2 = (EDU = 2);
-    EDU_3 = (EDU = 3);
-    EDU_4 = (EDU = 4);
-
-    /* ＲＥＦ: REGION=1 */
-    REGION_2 = (REGION = 2);
-    REGION_3 = (REGION = 3);
-
-    /* ＲＥＦ: SCE_STATUS=1 */
-    SCE_STATUS_2 = (SCE_STATUS = 2);
-    SCE_STATUS_3 = (SCE_STATUS = 3);
-
-    /* ＲＥＦ: HTH_STATUS=1 */
-    HTH_STATUS_2 = (HTH_STATUS = 2);
-    HTH_STATUS_3 = (HTH_STATUS = 3);
-
-    /* ＲＥＦ: LMT_ATV=0 */
-    LMT_ATV_1 = (LMT_ATV = 1);
-
-    /* ＲＥＦ: SMK=1 */
-    SMK_2 = (SMK = 2);
-
-    /* ＲＥＦ: DRK=1 */
-    DRK_2 = (DRK = 2);
-
-    /* ＤＲＯＰ ＴＨＥ ＶＡＲＩＡＢＬＥＳ */
-    DROP WORK GENDER EDU REGION SCE_STATUS HTH_STATUS LMT_ATV SMK DRK;
-RUN;
+%MEND;
+%UNION(2020, 2023);
 ```
 
 ## 4. 모델 실행
 
 ```swift
-PROC REG DATA=TEMP.DATA3;
-MODEL HAPPINESS = AGE GENDER_1 EDU_2 EDU_3 EDU_4 
-                  REGION_2 REGION_3 SCE_STATUS_2 SCE_STATUS_3 
-                  HTH_STATUS_2 HTH_STATUS_3 LMT_ATV_1 
-                  SMK_2 DRK_2 WORK_1;
+PROC GENMOD DATA=TEMP.DATA DESCENDING;
+    CLASS PID YEAR REGION EDU SCE_STATUS HTH_STATUS GENDER / PARAM=REF REF=FIRST;
+
+    MODEL HAPPINESS = GENDER AGE EDU REGION SCE_STATUS HTH_STATUS LMT_ATV SMK DRK WORK / 
+    DIST=NORMAL LINK=IDENTITY;
+
+	/*REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=IND;*/
+	/*REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=AR(1);*/
+	/*REPEATED SUBJECT=PID / TYPE=AR(1);*/
+	/*REPEATED SUBJECT=PID / TYPE=EXCH;*/
+	REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=EXCH;
 RUN;
 ```
 
 ## 5. 결과
+![image](https://github.com/user-attachments/assets/ac0e535d-6c3d-422d-805d-e8748312b37c)
+![image](https://github.com/user-attachments/assets/3de7f221-33e1-4ffd-bf47-559048ca5a1f)
+![image](https://github.com/user-attachments/assets/ecd846a5-5c25-4f2d-850b-0ec90813a6e0)
 
-![image 1](https://github.com/user-attachments/assets/91eaf155-9baf-4760-bce4-32c77cd8bf4d)
 
 ## 결론
 ^ㅡ^
