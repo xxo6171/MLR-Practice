@@ -207,18 +207,18 @@ PROC GENMOD DATA=TEMP.DATA DESCENDING;
     MODEL HAPPINESS = GENDER AGE EDU REGION SCE_STATUS HTH_STATUS LMT_ATV SMK DRK WORK / 
     DIST=NORMAL LINK=IDENTITY;
 
-	/*REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=IND;*/
-	/*REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=AR(1);*/
-	/*REPEATED SUBJECT=PID / TYPE=AR(1);*/
-	/*REPEATED SUBJECT=PID / TYPE=EXCH;*/
-	REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=EXCH CORRW;
+/*	REPEATED SUBJECT=PID / TYPE=IND CORRW;*/
+/*	REPEATED SUBJECT=PID /WITHIN=YEAR TYPE=AR(1) CORRW;*/
+	REPEATED SUBJECT=PID / TYPE=EXCH CORRW;
 RUN;
 ```
 
 ## 5. 결과
 ![image](https://github.com/user-attachments/assets/ac0e535d-6c3d-422d-805d-e8748312b37c)
 ![image](https://github.com/user-attachments/assets/b2f89b18-63a1-4f75-a717-8382a9716628)
-![image](https://github.com/user-attachments/assets/f93c976e-a813-4daf-9c33-3ca24a9b9ec6)
+![그림1](https://github.com/user-attachments/assets/6c91208a-a6e7-453e-919d-1baddf22655f)
+
+### TYPE=EXCH;
 ![image](https://github.com/user-attachments/assets/ecd846a5-5c25-4f2d-850b-0ec90813a6e0)
 
 
